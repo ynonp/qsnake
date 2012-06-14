@@ -2,13 +2,22 @@
 #include <QtGui/QtGui>
 #include <QDebug>
 
+#include "gamecontroller.h"
+
 qreal kChainSize = 10;
 
-Snake::Snake():
+Snake::Snake( GameController & controller ):
     m_head(0, 0),
     m_growing( 7 ),
-    m_speed ( 3 )
+    m_speed ( 3 ),
+    m_movementDirection ( MoveNone ),
+    m_controller ( controller )
 {
+}
+
+void Snake::setMovementDirection(TDirection direction)
+{
+    m_movementDirection = direction;
 }
 
 QRectF Snake::boundingRect() const
@@ -40,22 +49,23 @@ QRectF Snake::boundingRect() const
 QPainterPath Snake::shape () const
 {
     QPainterPath path;
-    path.addRect(boundingRect());
+    path.setFillRule( Qt::WindingFill );
+
+    path.addRect( QRectF(0, 0, kChainSize, kChainSize ) );
+
+    foreach ( QPointF p, m_tail )
+    {
+        QPointF itemp = mapFromScene(p);
+        path.addRect(QRectF(itemp.x(), itemp.y(), kChainSize, kChainSize ));
+    }
+
     return path;
 }
 
 void Snake::paint( QPainter *painter, const QStyleOptionGraphicsItem *option,  QWidget *widget )
 {
     painter->save();
-    painter->setBrush(Qt::yellow);
-    painter->drawRect(QRectF(0, 0, kChainSize,kChainSize));
-
-    foreach ( QPointF p, m_tail )
-    {
-        QPointF itemp = mapFromScene(p);
-        painter->drawRect(QRectF(itemp.x(), itemp.y(), kChainSize, kChainSize ));
-    }
-
+    painter->fillPath( shape(), Qt::yellow );
     painter->restore();
 }
 
@@ -64,6 +74,8 @@ void Snake::advance(int step)
 {
     if ( ! step ) return;
     if ( m_tickCounter++ % m_speed != 0 ) return;
+    if ( m_movementDirection == Snake::MoveNone ) return;
+
 
     if ( m_growing > 0 )
     {
@@ -77,16 +89,46 @@ void Snake::advance(int step)
         m_tail << m_head;
     }
 
-    if ( m_head.x() > -100 )
+
+    switch ( m_movementDirection )
     {
-        moveLeft();
+        case Snake::MoveLeft: moveLeft(); break;
+        case Snake::MoveRight: moveRight(); break;
+        case Snake::MoveUp: moveUp(); break;
+        case Snake::MoveDown: moveDown(); break;
     }
 
     setPos(m_head);
 
+    handleCollisions();
 }
 
-void Snake::moveLeft()  { m_head.rx() -= kChainSize; }
-void Snake::moveRight() { m_head.rx() += kChainSize; }
-void Snake::moveUp()    { m_head.ry() -= kChainSize; }
-void Snake::moveDown()  { m_head.ry() += kChainSize; }
+void Snake::moveLeft()  { m_head.rx() -= kChainSize; if ( m_head.rx() < -100 ) m_head.rx() = 100;  }
+void Snake::moveRight() { m_head.rx() += kChainSize; if ( m_head.rx() > 100  ) m_head.rx() = -100; }
+void Snake::moveUp()    { m_head.ry() -= kChainSize; if ( m_head.ry() < -100 ) m_head.ry() = 100;  }
+void Snake::moveDown()  { m_head.ry() += kChainSize; if ( m_head.ry() > 100  ) m_head.ry() = -100; }
+
+
+void Snake::handleCollisions()
+{
+    QList<QGraphicsItem *> collisions = collidingItems();
+
+    // Check collisions with other objects on screen
+    foreach ( QGraphicsItem *collidingItem, collisions )
+    {
+        if ( collidingItem->data( GameController::GD_Type ) == GameController::GO_Apple )
+        {
+            // Let GameController handle the event by putting another apple
+            m_controller.snakeAteAnApple( this, ( Apple * )collidingItem );
+            m_growing += 1;
+        }
+    }
+
+    // Check snake eating itself
+    if ( m_tail.contains( m_head ) )
+    {
+        m_controller.snakeAteItself( this );
+    }
+
+}
+

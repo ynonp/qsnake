@@ -10,6 +10,8 @@ public:
 
     QRectF boundingRect() const;
     void paint( QPainter *painter, const QStyleOptionGraphicsItem *option,  QWidget *widget );
+
+    QPainterPath shape () const;
 };
 
 #endif // APPLE_H
